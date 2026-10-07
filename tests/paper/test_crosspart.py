@@ -181,6 +181,70 @@ class TestAddedSheets:
         assert lo.lo_loads(out)
 
 
+def _workbook_with_external_link(path):
+    """Two sheets and one external workbook link, as a Capital IQ-linked
+    model carries."""
+    from openpyxl import Workbook
+    from openpyxl.packaging.relationship import Relationship
+    from openpyxl.workbook.external_link.external import (
+        ExternalBook, ExternalLink, ExternalSheetNames)
+
+    wb = Workbook()
+    wb.active.title = "Inputs"
+    wb["Inputs"]["B1"] = "='[1]Data'!A1"
+    wb.create_sheet("Model")["A1"] = 7
+    link = ExternalLink(externalBook=ExternalBook(
+        sheetNames=ExternalSheetNames(sheetName=["Data"]), id="rId1"))
+    link.file_link = Relationship(
+        type="externalLinkPath", Target="file:///C:/source.xlsx",
+        TargetMode="External")
+    wb._external_links.append(link)
+    wb.save(path)
+    return path
+
+
+def _relationship_targets(path):
+    from openpyxl.packaging.relationship import get_dependents
+    with zipfile.ZipFile(path) as archive:
+        rels = get_dependents(archive, "xl/_rels/workbook.xml.rels")
+    return {rel.id: rel.Target for rel in rels}
+
+
+class TestAddedSheetWithExternalLinks:
+    # The model numbers external-link relationships after the sheets, so a
+    # new sheet renumbered each <externalReference r:id> in the arm-vs-save
+    # render and every append refused as an externalReferences change.
+
+    def test_appended_sheet_keeps_external_links_byte_for_byte(self, tmp_path):
+        src = _workbook_with_external_link(str(tmp_path / "linked.xlsx"))
+        wb = load_workbook(src, preserve=True)
+        wb.create_sheet("Src Forecast")["A1"] = 1234.5
+        out = str(tmp_path / "o.xlsx")
+        receipt = wb.save(out, receipt=True).to_dict()
+
+        assert receipt["confession"] == []
+        d = diff_package(src, out)
+        assert len(d.added) == 1 and d.added[0].startswith("xl/worksheets/")
+        assert not d.removed
+        assert not any("externalLink" in c.part for c in d.changed)
+        before, after = _relationship_targets(src), _relationship_targets(out)
+        link_ids = [i for i, t in before.items() if "externalLink" in t]
+        assert link_ids and all(after[i] == before[i] for i in link_ids)
+        assert len(after) == len(before) + 1
+        wb2 = load_workbook(out)
+        assert wb2.sheetnames == ["Inputs", "Model", "Src Forecast"]
+        assert wb2["Inputs"]["B1"].value == "='[1]Data'!A1"
+        assert len(wb2._external_links) == 1
+
+    def test_removing_an_external_link_still_refuses(self, tmp_path):
+        src = _workbook_with_external_link(str(tmp_path / "linked.xlsx"))
+        wb = load_workbook(src, preserve=True)
+        wb._external_links.pop()
+        with pytest.raises(UnsupportedStructureError,
+                           match="external workbook links were modified"):
+            wb.save(str(tmp_path / "o.xlsx"))
+
+
 class TestWorkbookXmlSplice:
 
     def test_defined_name_add(self, fixture_copy, tmp_path):

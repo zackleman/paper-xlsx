@@ -352,6 +352,20 @@ def _escape_text(value):
             .encode("utf-8"))
 
 
+# openpyxl numbers workbook relationships in order, sheets first, so a new
+# sheet renumbers every later r:id in the model render (externalReferences,
+# pivotCaches) while the file keeps its own ids. What those ids point to is
+# guarded on its own (the external links snapshot in saver.py), and element
+# counts still compare, so only the renumbering is ignored.
+_RENDERED_REL_ID = re.compile(rb' r:id="[^"]*"')
+
+
+def _without_rel_ids(renders):
+    if renders is None:
+        return None
+    return tuple(_RENDERED_REL_ID.sub(b"", render) for render in renders)
+
+
 def plan_workbook_xml(wb, led, original, new_sheet_entries, force_tags=()):
     """New workbook.xml bytes, or None if nothing changes.
 
@@ -365,7 +379,8 @@ def plan_workbook_xml(wb, led, original, new_sheet_entries, force_tags=()):
     snapshot = led.workbook_snapshot or {}
     changed = {}
     for tag in set(current) | set(snapshot):
-        if current.get(tag) != snapshot.get(tag):
+        if _without_rel_ids(current.get(tag)) != \
+                _without_rel_ids(snapshot.get(tag)):
             changed[tag] = current.get(tag)
     for tag in force_tags:
         if tag in WB_SPLICEABLE and tag not in changed:
