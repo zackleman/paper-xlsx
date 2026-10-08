@@ -23,13 +23,22 @@ class LedgerCrossCheckError(RuntimeError):
     """The splice changed cells the ledger never recorded."""
 
 
+def _element_signature(el):
+    """The element's qualified tag, attributes, text and children with their
+    tails: equal exactly when the elements' C14N forms are equal. Read from
+    the parsed tree, it skips the serialize, reparse and canonicalize that
+    took most of a receipt on a workbook whose every formula cache changed."""
+    return (el.tag, tuple(sorted(el.attrib.items())), el.text or "",
+            tuple((_element_signature(child), child.tail or "")
+                  for child in el))
+
+
 def _cell_signature(el):
     """Canonical per-cell signature; s missing is equivalent to s='0'."""
     attrs = dict(el.attrib)
     attrs.pop("r", None)
     attrs.setdefault("s", "0")
-    body = ET.canonicalize(ET.tostring(el))
-    return (tuple(sorted(attrs.items())), body)
+    return (tuple(sorted(attrs.items())), _element_signature(el))
 
 
 def _sheet_cells(payload):

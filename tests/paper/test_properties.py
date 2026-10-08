@@ -133,3 +133,67 @@ class TestRegionClaimsCrossCheck:
         with pytest.raises(LedgerCrossCheckError, match="row"):
             verify_splice(before, after,
                           {"xl/worksheets/sheet1.xml": set()})
+
+
+class TestCellSignatureMatchesC14N:
+    """Receipts and the cross-check call two cells equal by their signature.
+    The signature reads the parsed tree instead of canonicalizing each cell,
+    and must agree with the C14N comparison it replaced on every pair."""
+
+    _OPEN = (
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/'
+        '2006/main" xmlns:x14ac="http://schemas.microsoft.com/office/'
+        'spreadsheetml/2009/9/ac"><sheetData><row r="1">')
+    _CLOSE = '</row></sheetData></worksheet>'
+
+    CELLS = [
+        '<c r="A1"><v>1</v></c>',
+        '<c r="A1"><v>2</v></c>',
+        '<c r="A1" s="0"><v>1</v></c>',
+        '<c r="A1" s="3" t="n"><v>1</v></c>',
+        '<c r="A1" t="n" s="3"><v>1</v></c>',
+        '<c r="A1" x14ac:dyDescent="0.25"><v>1</v></c>',
+        '<c r="A1"><f>B1+1</f><v>2</v></c>',
+        '<c r="A1"><f>B1+1</f>\n  <v>2</v></c>',
+        '<c r="A1"><v>2</v><f>B1+1</f></c>',
+        '<c r="A1"><f>B1+1</f></c>',
+        '<c r="A1"><f>B1+1</f><v></v></c>',
+        '<c r="A1"><f>B1+1</f><v/></c>',
+        '<c r="A1"><f t="shared" si="0" ref="A1:A9">B1+1</f><v>2</v></c>',
+        '<c r="A1"><f ref="A1:A9" si="0" t="shared">B1+1</f><v>2</v></c>',
+        '<c r="A1" t="str"><f>"a&amp;b"</f><v>a&amp;b</v></c>',
+        '<c r="A1" t="str"><f>"a&#38;b"</f><v>a&#38;b</v></c>',
+        '<c r="A1" t="inlineStr"><is><t>a</t></is></c>',
+        '<c r="A1" t="inlineStr"><is><t xml:space="preserve"> a </t></is></c>',
+        '<c r="A1" t="inlineStr"><is><t xml:space="preserve">a </t></is></c>',
+        '<c r="A1" t="inlineStr"><is><r><rPr><b/></rPr><t>a</t></r></is></c>',
+        '<c r="A1" t="inlineStr"><is><r><rPr><i/></rPr><t>a</t></r></is></c>',
+    ]
+
+    def _cell(self, xml):
+        from xml.etree import ElementTree as ET
+
+        root = ET.fromstring(self._OPEN + xml + self._CLOSE)
+        return next(root.iter(
+            "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}c"))
+
+    def test_equal_exactly_when_canonical_forms_are_equal(self):
+        from xml.etree import ElementTree as ET
+
+        from openpyxl.preserve.crosscheck import _cell_signature
+
+        def c14n_signature(el):
+            attrs = dict(el.attrib)
+            attrs.pop("r", None)
+            attrs.setdefault("s", "0")
+            return (tuple(sorted(attrs.items())),
+                    ET.canonicalize(ET.tostring(el)))
+
+        cells = [self._cell(xml) for xml in self.CELLS]
+        expected = [c14n_signature(el) for el in cells]
+        actual = [_cell_signature(el) for el in cells]
+        for i in range(len(cells)):
+            for j in range(len(cells)):
+                assert (actual[i] == actual[j]) == \
+                    (expected[i] == expected[j]), \
+                    (self.CELLS[i], self.CELLS[j])
