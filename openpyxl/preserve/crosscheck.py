@@ -24,13 +24,27 @@ class LedgerCrossCheckError(RuntimeError):
 
 
 def _element_signature(el):
-    """The element's qualified tag, attributes, text and children with their
-    tails: equal exactly when the elements' C14N forms are equal. Read from
-    the parsed tree, it skips the serialize, reparse and canonicalize that
-    took most of a receipt on a workbook whose every formula cache changed."""
-    return (el.tag, tuple(sorted(el.attrib.items())), el.text or "",
-            tuple((_element_signature(child), child.tail or "")
-                  for child in el))
+    """The parsed tree in document order: each element's depth, qualified
+    tag, attributes as written, text, and tail (not the root's own tail).
+
+    Elements with equal signatures serialize identically up to the root's
+    tail, which C14N drops, so their C14N forms are equal too: it never calls
+    a change "same" that canonicalizing did. It is
+    stricter in two ways: reordered attributes, and a carriage return written
+    as a character reference, which canonicalizing read as a line feed.
+    Reading the tree skips the serialize, reparse and canonicalize per cell
+    that took most of a receipt once every formula cache in a workbook
+    changed. The walk is iterative, so nesting depth is not bounded by the
+    recursion limit."""
+    signature = []
+    stack = [(el, 0)]
+    while stack:
+        node, depth = stack.pop()
+        signature.append((
+            depth, node.tag, tuple(node.attrib.items()), node.text or "",
+            node.tail or "" if depth else ""))
+        stack.extend((child, depth + 1) for child in reversed(node))
+    return tuple(signature)
 
 
 def _cell_signature(el):
