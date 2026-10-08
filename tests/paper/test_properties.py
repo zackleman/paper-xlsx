@@ -226,3 +226,14 @@ class TestCellSignatureNeverLaxerThanC14N:
         same = _cell_signature(self._cell(cell.format("x")))
         assert same == _cell_signature(self._cell(cell.format("x")))
         assert same != _cell_signature(self._cell(cell.format("y")))
+
+    def test_text_after_a_cell_is_a_change(self):
+        # C14N dropped whitespace after a cell and raised on other text, so
+        # junk spliced in after an untouched cell must not compare equal.
+        from openpyxl.preserve.crosscheck import _cell_signature
+
+        plain = _cell_signature(self._cell('<c r="A1"><v>1</v></c>'))
+        assert plain == _cell_signature(
+            self._cell('<c r="A1"><v>1</v></c>\n  '))
+        assert plain != _cell_signature(
+            self._cell('<c r="A1"><v>1</v></c>junk'))
