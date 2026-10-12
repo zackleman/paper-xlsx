@@ -52,6 +52,19 @@ class TestSearchAndScan:
         sources = {r["source"] for r in results}
         assert {"cache", "formula"} <= sources
 
+    def test_scan_errors_reads_a_self_closing_error_cell_as_empty(
+            self, fixture_copy):
+        # A10 is written <c r="A10" s="0" t="e"/>. Reading cells as
+        # "<c ...>body</c>" ran it on into B10 and reported B10's 1000 as
+        # a cached error at A10.
+        from openpyxl.preserve import scan_errors
+
+        wb = load_workbook(
+            fixture_copy("features/self_closing_cells.xlsx"), preserve=True)
+        cached = [r for r in scan_errors(wb) if r["source"] == "cache"]
+        assert cached == [{"address": "Schedule!C10", "value": "#DIV/0!",
+                           "source": "cache"}]
+
     def test_scan_errors_uses_formula_operands_not_string_substrings(self):
         from openpyxl.preserve import scan_errors
 

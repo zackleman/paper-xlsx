@@ -1,6 +1,21 @@
 Unreleased
 ==========
 
+Bugfixes
+--------
+
+* A receipt's ``formula_cache_removed`` effects and ``scan_errors``' cached
+  errors read cells as XML. Both scanned "<c ...>body</c>" with a regex, so a
+  self-closing cell, how Excel writes a style-only one, ran on into the next
+  cell: the receipt named the style-only cell and missed the formula whose
+  cache was removed, and ``scan_errors`` reported the next cell's value as a
+  cached error.
+* A receipt names the cached result a save strips from each cell inside an
+  array formula's range, not only from the formula's own cell. Those cells
+  hold no formula, so they showed in ``cells_changed`` with nothing in
+  ``derived_effects`` to explain them: 2,521 such cells in one save of a
+  271-sheet valuation model.
+
 
 paper-xlsx 0.2.1 (2026-08-21)
 ================================

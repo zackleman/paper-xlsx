@@ -13,9 +13,7 @@ from openpyxl.formula.tokenizer import (
 
 ERROR_TOKENS = frozenset(EXCEL_ERROR_CODES)
 
-_ERROR_CELL_RE = re.compile(
-    br"<c\b([^>]*)\bt=(?:\"e\"|'e')([^>]*)>(.*?)</c>", re.S)
-_R_ATTR_RE = re.compile(br"\br=(?:\"([A-Za-z]+\d+)\"|'([A-Za-z]+\d+)')")
+_ERROR_TYPE = re.compile(br"""\bt\s*=\s*(?:"e"|'e')""")
 
 
 def current_titles_by_part(wb, zin):
@@ -98,24 +96,31 @@ def scan_errors(wb):
     import io
     import zipfile
 
+    from .crosscheck import _iter_sheet_cells
+
     with zipfile.ZipFile(io.BytesIO(source)) as zin:
         title_by_part = current_titles_by_part(wb, zin)
         names = set(zin.namelist())
         for part, title in sorted(title_by_part.items()):
             if part not in names:
                 continue
-            for match in _ERROR_CELL_RE.finditer(zin.read(part)):
-                ref_match = _R_ATTR_RE.search(match.group(1) + match.group(2))
-                value_match = re.search(br"<v[^>]*>([^<]*)</v>", match.group(3))
-                if ref_match is None or value_match is None:
+            payload = zin.read(part)
+            # Most sheets hold no error-typed cell: skip parsing those. A
+            # character reference could spell t="e", so it forces a parse.
+            if not _ERROR_TYPE.search(payload) and b"&#" not in payload:
+                continue
+            for ref, cell in _iter_sheet_cells(payload):
+                if cell.get("t") != "e":
                     continue
-                ref = (ref_match.group(1) or ref_match.group(2)).decode("ascii")
+                cached = cell.find(cell.tag[:-1] + "v")
+                if cached is None:
+                    continue
                 address = "{0}!{1}".format(title, ref)
                 if address in seen:
                     continue
                 results.append({
                     "address": address,
-                    "value": value_match.group(1).decode("utf-8", "replace"),
+                    "value": cached.text or "",
                     "source": "cache",
                 })
                 seen.add(address)
