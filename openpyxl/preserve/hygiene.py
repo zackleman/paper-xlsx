@@ -13,7 +13,10 @@ from openpyxl.formula.tokenizer import (
 
 ERROR_TOKENS = frozenset(EXCEL_ERROR_CODES)
 
-_ERROR_TYPE = re.compile(br"""\bt\s*=\s*(?:"e"|'e')""")
+# t="e", or a t value holding a character reference, which could spell "e".
+# An attribute value cannot hold "<", so the scan stops at the tag's end.
+_ERROR_TYPE = re.compile(
+    br"""\bt\s*=\s*(?:"(?:e"|[^"<]*&#)|'(?:e'|[^'<]*&#))""")
 
 
 def current_titles_by_part(wb, zin):
@@ -105,9 +108,8 @@ def scan_errors(wb):
             if part not in names:
                 continue
             payload = zin.read(part)
-            # Most sheets hold no error-typed cell: skip parsing those. A
-            # character reference could spell t="e", so it forces a parse.
-            if not _ERROR_TYPE.search(payload) and b"&#" not in payload:
+            # Most sheets hold no error-typed cell: skip parsing those.
+            if not _ERROR_TYPE.search(payload):
                 continue
             for ref, cell in _iter_sheet_cells(payload):
                 if cell.get("t") != "e":

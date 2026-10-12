@@ -65,6 +65,29 @@ class TestSearchAndScan:
         assert cached == [{"address": "Schedule!C10", "value": "#DIV/0!",
                            "source": "cache"}]
 
+    def test_scan_errors_parses_only_parts_whose_t_value_can_be_e(self):
+        # A character reference inside a t value can spell "e" and forces a
+        # parse; one in a cell's text, such as an escaped carriage return,
+        # does not.
+        from openpyxl.preserve.crosscheck import _iter_sheet_cells
+        from openpyxl.preserve.hygiene import _ERROR_TYPE
+
+        cells = {
+            b'<c r="A1" t="e"><v>#N/A</v></c>': True,
+            b"<c r='A1' t = 'e'><v>#N/A</v></c>": True,
+            b'<c r="A1" t="&#101;"><v>#N/A</v></c>': True,
+            b"<c r='A1' t='&#x65;'><v>#N/A</v></c>": True,
+            b'<c r="A1" t="inlineStr"><is><t>a&#13;b</t></is></c>': False,
+            b'<c r="A1" t="str"><f>CHAR(13)</f><v>&#13;</v></c>': False,
+        }
+        for cell, holds_error in cells.items():
+            payload = (b'<worksheet xmlns="http://schemas.openxmlformats.org/'
+                       b'spreadsheetml/2006/main"><sheetData><row r="1">'
+                       + cell + b'</row></sheetData></worksheet>')
+            types = [c.get("t") for _, c in _iter_sheet_cells(payload)]
+            assert (types == ["e"]) == holds_error
+            assert bool(_ERROR_TYPE.search(payload)) == holds_error
+
     def test_scan_errors_uses_formula_operands_not_string_substrings(self):
         from openpyxl.preserve import scan_errors
 

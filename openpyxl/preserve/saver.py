@@ -295,7 +295,8 @@ def save_preserved(workbook, target, *, allow_formula_loss=False):
             expected_identity=expected_identity,
             target_is_source=target_is_source)
         committed_identity = _commit_preserve_plan(save_plan, target)
-        workbook._paper_cache_invalidations = save_plan.invalidated_by_part
+        if workbook._paper_cache_invalidations is not None:
+            workbook._paper_cache_invalidations = save_plan.invalidated_by_part
         if source_identity is not None and expected_identity is not None \
                 and (expected_identity.requested == source_identity.requested
                      or zipio._same_occupant(

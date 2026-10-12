@@ -1335,6 +1335,25 @@ def test_save_receipt_matches_stripped_cells_by_coordinate(
     assert changed - {"A2"} == removed
 
 
+def test_only_a_receipt_save_records_the_caches_it_strips(
+        fixture_copy, tmp_path):
+    # The record can name every formula cell in the workbook, so a direct
+    # save_workbook call must not leave it on a long-lived workbook.
+    from openpyxl.writer.excel import save_workbook
+
+    workbook = load_workbook(
+        fixture_copy("features/array_cached.xlsx"), preserve=True)
+    workbook["Calc"]["A2"] = 25
+    save_workbook(workbook, tmp_path / "direct.xlsx")
+    assert workbook._paper_cache_invalidations is None
+
+    receipt = workbook.save(tmp_path / "out.xlsx", receipt=True).to_dict()
+    removed = {effect["cell"] for effect in receipt["derived_effects"]
+               if effect["kind"] == "formula_cache_removed"}
+    assert {"D3", "D4"} <= removed
+    assert workbook._paper_cache_invalidations is None
+
+
 @pytest.mark.lo_smoke
 @pytest.mark.parametrize("fixture, sheet, cell, value", [
     ("features/self_closing_cells.xlsx", "Schedule", "B2", 250),
