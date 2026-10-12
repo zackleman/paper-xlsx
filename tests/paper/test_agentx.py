@@ -70,7 +70,7 @@ class TestSearchAndScan:
         # parse; one in a cell's text, such as an escaped carriage return,
         # does not.
         from openpyxl.preserve.crosscheck import _iter_sheet_cells
-        from openpyxl.preserve.hygiene import _ERROR_TYPE
+        from openpyxl.preserve.hygiene import _may_hold_error_cells
 
         cells = {
             b'<c r="A1" t="e"><v>#N/A</v></c>': True,
@@ -86,7 +86,12 @@ class TestSearchAndScan:
                        + cell + b'</row></sheetData></worksheet>')
             types = [c.get("t") for _, c in _iter_sheet_cells(payload)]
             assert (types == ["e"]) == holds_error
-            assert bool(_ERROR_TYPE.search(payload)) == holds_error
+            assert _may_hold_error_cells(payload) == holds_error
+        # Under the stdlib parser a DTD entity can spell t="&err;" as "e".
+        assert _may_hold_error_cells(
+            b'<!DOCTYPE worksheet [<!ENTITY err "e">]><worksheet>'
+            b'<sheetData><row r="1"><c r="A1" t="&err;"><v>#N/A</v></c>'
+            b'</row></sheetData></worksheet>')
 
     def test_scan_errors_uses_formula_operands_not_string_substrings(self):
         from openpyxl.preserve import scan_errors

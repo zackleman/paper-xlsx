@@ -1354,6 +1354,38 @@ def test_only_a_receipt_save_records_the_caches_it_strips(
     assert workbook._paper_cache_invalidations is None
 
 
+def test_a_receipt_save_inside_another_save_keeps_the_outer_record(
+        fixture_copy, tmp_path):
+    # A cell value's isoformat() runs during the outer save's write, so it
+    # can save with a receipt too. With D2's cache already gone, only the
+    # outer save's own record explains the D3 and D4 caches it strips.
+    import datetime
+
+    source = tmp_path / "source.xlsx"
+    _rewrite_part(fixture_copy("features/array_cached.xlsx"), source,
+                  "xl/worksheets/sheet1.xml",
+                  b'A2:A4*3</f><v>60</v>', b'A2:A4*3</f>')
+    workbook = load_workbook(source, preserve=True)
+    workbook.iso_dates = True
+    nested = []
+
+    class SavesOnFormat(datetime.datetime):
+        def isoformat(self, *args, **kwargs):
+            if not nested:
+                nested.append(True)
+                workbook.save(io.BytesIO(), receipt=True)
+            return super().isoformat(*args, **kwargs)
+
+    workbook["Calc"]["A2"] = 25
+    workbook["Calc"]["F9"] = SavesOnFormat(2026, 1, 2)
+    receipt = workbook.save(tmp_path / "out.xlsx", receipt=True).to_dict()
+
+    assert nested
+    removed = {effect["cell"] for effect in receipt["derived_effects"]
+               if effect["kind"] == "formula_cache_removed"}
+    assert {"D3", "D4"} <= removed
+
+
 @pytest.mark.lo_smoke
 @pytest.mark.parametrize("fixture, sheet, cell, value", [
     ("features/self_closing_cells.xlsx", "Schedule", "B2", 250),

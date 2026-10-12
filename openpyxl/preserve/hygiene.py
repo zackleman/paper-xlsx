@@ -19,6 +19,16 @@ _ERROR_TYPE = re.compile(
     br"""\bt\s*=\s*(?:"(?:e"|[^"<]*&#)|'(?:e'|[^'<]*&#))""")
 
 
+def _may_hold_error_cells(payload):
+    """Whether a worksheet part could hold a cell whose ``t`` is ``e``.
+
+    Most sheets hold none, and skipping their parse is most of the scan's
+    time. A DTD can declare an entity that spells ``e``, so a part with one
+    is always parsed; the guarded parser refuses it where it can.
+    """
+    return _ERROR_TYPE.search(payload) is not None or b"<!DOCTYPE" in payload
+
+
 def current_titles_by_part(wb, zin):
     """Map worksheet part names to current live titles."""
     from .saver import _package_info
@@ -108,8 +118,7 @@ def scan_errors(wb):
             if part not in names:
                 continue
             payload = zin.read(part)
-            # Most sheets hold no error-typed cell: skip parsing those.
-            if not _ERROR_TYPE.search(payload):
+            if not _may_hold_error_cells(payload):
                 continue
             for ref, cell in _iter_sheet_cells(payload):
                 if cell.get("t") != "e":

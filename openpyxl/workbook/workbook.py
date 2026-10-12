@@ -668,14 +668,16 @@ class Workbook:
             expected_identity = _expected_delivery_identity(self, filename)
             staged = BytesIO()
             # The staging save's record of the caches it stripped belongs to
-            # this receipt alone; nothing keeps it once read.
+            # this receipt alone; nothing keeps it once read. A receipt save
+            # nested in another save's write hands back the outer request.
+            outer = self._paper_cache_invalidations
             self._paper_cache_invalidations = {}
             try:
                 save_workbook(
                     self, staged, allow_formula_loss=allow_formula_loss)
                 invalidated = self._paper_cache_invalidations
             finally:
-                self._paper_cache_invalidations = None
+                self._paper_cache_invalidations = outer
             data = staged.getvalue()
             result = _receipt(
                 self._paper_source, data, _ledger=self._paper_ledger,
