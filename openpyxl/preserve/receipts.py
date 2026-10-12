@@ -111,38 +111,47 @@ def _coordinate(ref):
         return None
 
 
-# Arrays at most this many rows tall are indexed by row; taller ones (a
-# whole-column array) are few and checked directly.
-_INDEXED_ARRAY_ROWS = 1024
+# An array at most this many rows tall is found by its first row; taller
+# ones (a whole-column array) are few and checked directly.
+_SHORT_ARRAY_ROWS = 1024
 
 
 def _cleared_array_member(arrays, old, new):
     """A test for whether a reference lies in an array formula's range whose
     anchor lost its cached value in the same comparison. A save strips the
     whole range at once; a value cleared under an anchor that kept its cache
-    was an edit, not a derived effect. The ranges are indexed by row once,
-    so checking every cleared cell does not scan every array."""
-    by_row = {}
+    was an edit, not a derived effect. Short arrays are kept sorted by first
+    row, so a reference checks only those starting within _SHORT_ARRAY_ROWS
+    rows above it, and memory stays one entry per array."""
+    from bisect import bisect_left, bisect_right
+
+    short = []
     tall = []
     for anchor, (min_col, min_row, max_col, max_row) in arrays:
         if old.get(anchor) != (True, True) \
                 or new.get(anchor) != (True, False):
             continue
-        if max_row - min_row < _INDEXED_ARRAY_ROWS:
-            for row in range(min_row, max_row + 1):
-                by_row.setdefault(row, []).append((min_col, max_col))
+        bounds = (min_row, min_col, max_row, max_col)
+        if max_row - min_row < _SHORT_ARRAY_ROWS:
+            short.append(bounds)
         else:
-            tall.append((min_col, min_row, max_col, max_row))
+            tall.append(bounds)
+    short.sort()
+    starts = [bounds[0] for bounds in short]
 
     def member(ref):
         coordinate = _coordinate(ref)
         if coordinate is None:
             return False
         row, col = coordinate
-        return any(min_col <= col <= max_col
-                   for min_col, max_col in by_row.get(row, ())) \
-            or any(min_col <= col <= max_col and min_row <= row <= max_row
-                   for min_col, min_row, max_col, max_row in tall)
+        first = bisect_left(starts, row - _SHORT_ARRAY_ROWS + 1)
+        last = bisect_right(starts, row)
+        for index in range(first, last):
+            _min_row, min_col, max_row, max_col = short[index]
+            if row <= max_row and min_col <= col <= max_col:
+                return True
+        return any(min_row <= row <= max_row and min_col <= col <= max_col
+                   for min_row, min_col, max_row, max_col in tall)
 
     return member
 
