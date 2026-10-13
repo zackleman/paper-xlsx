@@ -93,6 +93,28 @@ class TestSearchAndScan:
             b'<sheetData><row r="1"><c r="A1" t="&err;"><v>#N/A</v></c>'
             b'</row></sheetData></worksheet>')
 
+    def test_scan_errors_reads_a_utf16_sheet(self, fixture_copy, tmp_path):
+        # The t-value prefilter matches bytes, which UTF-16 spells
+        # differently; such a sheet must still be read.
+        from openpyxl.preserve import scan_errors
+
+        source = fixture_copy("features/self_closing_cells.xlsx")
+        target = tmp_path / "utf16.xlsx"
+        with zipfile.ZipFile(source) as zin, \
+                zipfile.ZipFile(target, "w") as zout:
+            for info in zin.infolist():
+                payload = zin.read(info.filename)
+                if info.filename == "xl/worksheets/sheet1.xml":
+                    payload = payload.decode("utf-8").replace(
+                        'encoding="UTF-8"', 'encoding="UTF-16"', 1
+                    ).encode("utf-16")
+                zout.writestr(info, payload)
+
+        wb = load_workbook(target, preserve=True)
+        cached = [r for r in scan_errors(wb) if r["source"] == "cache"]
+        assert cached == [{"address": "Schedule!C10", "value": "#DIV/0!",
+                           "source": "cache"}]
+
     def test_scan_errors_uses_formula_operands_not_string_substrings(self):
         from openpyxl.preserve import scan_errors
 

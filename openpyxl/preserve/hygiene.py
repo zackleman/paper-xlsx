@@ -2,6 +2,7 @@
 
 """Report cached error values and broken formula references."""
 
+import codecs
 import re
 
 from openpyxl.formula.tokenizer import (
@@ -23,9 +24,16 @@ def _may_hold_error_cells(payload):
     """Whether a worksheet part could hold a cell whose ``t`` is ``e``.
 
     Most sheets hold none, and skipping their parse is most of the scan's
-    time. A DTD can declare an entity that spells ``e``, so a part with one
-    is always parsed; the guarded parser refuses it where it can.
+    time. The byte patterns hold only in an ASCII-compatible encoding, so a
+    part that does not open with "<" (after a UTF-8 BOM), such as UTF-16, is
+    always parsed. A DTD can declare an entity that spells ``e``, so a part
+    with one is always parsed too; the guarded parser refuses it where it
+    can.
     """
+    start = len(codecs.BOM_UTF8) if payload.startswith(codecs.BOM_UTF8) else 0
+    if payload[start:start + 1] != b"<" \
+            or b"\x00" in payload[start:start + 4]:
+        return True
     return _ERROR_TYPE.search(payload) is not None or b"<!DOCTYPE" in payload
 
 

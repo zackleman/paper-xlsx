@@ -9,8 +9,8 @@ Bugfixes
   self-closing cell, how Excel writes a style-only one, ran on into the next
   cell: the receipt named the style-only cell and missed the formula whose
   cache was removed, and ``scan_errors`` reported the next cell's value as a
-  cached error. ``scan_errors`` parses only a sheet with a ``t`` value that
-  is ``e`` or holds a character reference, which could spell ``e``.
+  cached error. ``scan_errors`` still skips parsing a sheet whose bytes rule
+  out a ``t`` value of ``e``.
 * A receipt names the cached result a save strips from each cell inside an
   array formula's range, not only from the formula's own cell. Those cells
   hold no formula, so they showed in ``cells_changed`` with nothing in
